@@ -107,14 +107,14 @@ suhu_data <- bind_rows(D_suhu_agg, F_suhu_agg, S_suhu_agg, N_suhu_agg)
 suhu_data <- suhu_data %>% rename(Temperature = Mean_Annual_Temp)
 
 
-######################################## Merge Data for Random Effect Food Item
+######################################## Merge Data for Random Effect Country
 
 
 # Merge by "Year" and "Country"
 merged_data <- prod_data %>%
   left_join(suhu_data, by = c("Year", "Country"))
 
-# Select relevant years (1984-2021)
+# Select relevant years (1984-2023)
 merged_data <- merged_data %>%
   filter(Year >= 1984 & Year <= 2023)
 
@@ -309,7 +309,7 @@ print(summary_m4_df)
 # write.csv(summary_m4_df, "Summary Model/summary_m4.csv", row.names = FALSE)
 
 
-############################# Prepare merged_data for country as random effect
+############################# Merge Data for Random Effect Food Item
 
 
 library(dplyr)

@@ -64,88 +64,117 @@ head(sweden_prod_clean)
 #write.csv(sweden_prod_clean, "sweden_prod_clean.csv", row.names = FALSE)
 
 
-###################### Function to calculate mean production per year
+################### Find foods available in all 4 country
 
+# Get the list of countries you're interested in
+target_countries <- c("Denmark", "Finland", "Norway", "Sweden")
 
-calculate_annual_production <- function(df) {
-  df %>%
-    mutate(across(-Year, ~ as.numeric(.), .names = "num_{col}")) %>%  # Convert to numeric
-    rowwise() %>%
-    mutate(mean_production = mean(c_across(starts_with("num_")), na.rm = TRUE)) %>%
-    ungroup() %>%
-    select(Year, mean_production)  # Keep only Year and mean production
+# Filter the dataset to include only those 4 countries
+food_all_wide_4 <- food_all_wide %>%
+  filter(Area %in% target_countries)
+
+# Identify food item columns (exclude 'Area' and 'Year')
+food_columns <- setdiff(names(food_all_wide_4), c("Area", "Year"))
+
+# Initialize a vector to hold food items available in all 4 countries
+food_available_all_countries <- c()
+
+# Loop through each food item column
+for (food in food_columns) {
+  # Get data for this food item
+  food_data <- food_all_wide_4[, c("Area", food)]
+  colnames(food_data) <- c("Area", "FoodValue")
+  
+  # Keep only rows where value is not empty
+  food_data <- food_data[food_data$FoodValue != "", ]
+  
+  # Check if all 4 countries are present
+  if (all(target_countries %in% unique(food_data$Area))) {
+    food_available_all_countries <- c(food_available_all_countries, food)
+  }
 }
 
-# Calculate mean production for each country
-denmark_annual_prod <- calculate_annual_production(denmark_prod_clean)
-finland_annual_prod <- calculate_annual_production(finland_prod_clean)
-norway_annual_prod  <- calculate_annual_production(norway_prod_clean)
-sweden_annual_prod  <- calculate_annual_production(sweden_prod_clean)
-
-# View results
-head(denmark_annual_prod)
-head(finland_annual_prod)
-head(norway_annual_prod)
-head(sweden_annual_prod)
+# View result
+cat("✅ Food items available in all 4 countries:\n")
+print(food_available_all_countries)
 
 
-######################## Visual annual production
+###################### Sum all production item of the same country
 
 
+library(dplyr)
+library(tidyr)
 library(ggplot2)
 
-# Combine all datasets with a country identifier
-denmark_annual_prod$Country <- "Denmark"
-finland_annual_prod$Country <- "Finlandia"
-norway_annual_prod$Country <- "Norwegia"
-sweden_annual_prod$Country <- "Swedia"
+# Step 1: Filter dataset
+filtered_data <- food_all_wide %>%
+  filter(Area %in% target_countries) %>%
+  select(c("Area", "Year", all_of(food_available_all_countries)))
 
-combined_prod <- bind_rows(
-  denmark_annual_prod,
-  finland_annual_prod,
-  norway_annual_prod,
-  sweden_annual_prod
+# Step 2: Convert "" to 0 for summation
+filtered_data[food_available_all_countries] <- lapply(
+  filtered_data[food_available_all_countries],
+  function(x) as.numeric(ifelse(x == "", 0, x))
 )
 
-# Plot
-ggplot(combined_prod, aes(x = Year, y = mean_production, color = Country, linetype = Country)) +
+# Step 3: Sum all food item production per country per year
+production_sums <- filtered_data %>%
+  group_by(Area, Year) %>%
+  summarise(Total_Production = sum(across(all_of(food_available_all_countries)), na.rm = TRUE)) %>%
+  ungroup() %>%
+  rename(Country = Area)  
+
+# Step 4: Change name for plot
+production_sums <- production_sums %>%
+  mutate(Country = recode(Country,
+                          "Denmark" = "Denmark",
+                          "Finland" = "Finlandia",
+                          "Norway" = "Norwegia",
+                          "Sweden" = "Swedia"))
+
+# Step 5: Plot
+ggplot(production_sums, aes(x = Year, y = Total_Production, color = Country, linetype = Country)) +
   geom_line(size = 1) +
   theme_minimal() +
   labs(
-    title = "Rataan Produksi Pangan Tahunan Antar Negara",
+    title = "Total Produksi Pangan Tahunan Antar Negara",
     x = "Tahun",
-    y = "Rataan Produksi Pangan",
+    y = "Total Produksi Pangan",
     color = "Negara",
     linetype = "Negara"
   ) +
-  scale_color_manual(values = c("blue", "red", "green", "black")) +
-  scale_linetype_manual(values = c("solid", "dashed", "dotted", "dotdash")) +
+  scale_color_manual(values = c("Denmark" = "skyblue", 
+                                "Finlandia" = "lightgreen", 
+                                "Swedia" = "plum", 
+                                "Norwegia" = "lightcoral")) +
+  scale_linetype_manual(values = c("Denmark" = "solid", 
+                                   "Finlandia" = "dashed", 
+                                   "Swedia" = "dotted", 
+                                   "Norwegia" = "dotdash")) +
   theme(
     plot.title = element_text(hjust = 0.5),
-    #axis.title.x = element_text(face = "italic"),
-    #axis.title.y = element_text(face = "italic"),
-    legend.position = "bottom",
-    #legend.title = element_text(face = "italic")
+    legend.position = "bottom"
   )
 
 
 ########### Box Plot
 
-# Boxplot of annual mean production
-ggplot(combined_prod, aes(x = Country, y = mean_production, fill = Country)) +
+ggplot(production_sums, aes(x = Country, y = Total_Production, fill = Country)) +
   geom_boxplot(outlier.color = "red", outlier.shape = 16, outlier.size = 2) +
   theme_minimal() +
   labs(
-    title = "Distribusi Produksi Pangan Tahunan Antar Negara",
+    title = "Distribusi Total Produksi Pangan Antar Negara",
     x = "Negara",
-    y = "Rataan Produksi Pangan"
+    y = "Total Produksi Pangan"
   ) +
-  scale_fill_manual(values = c("blue", "red", "green", "black")) +
+  scale_fill_manual(values = c("Denmark" = "skyblue", 
+                               "Finlandia" = "lightgreen", 
+                               "Swedia" = "plum", 
+                               "Norwegia" = "lightcoral")) +
   theme(
     plot.title = element_text(hjust = 0.5),
-    #axis.title.x = element_text(face = "italic"),
-    #axis.title.y = element_text(face = "italic"),
-    axis.text = element_text(size = 10)
+    axis.text = element_text(size = 10),
+    legend.position = "none"  # Optional: hide legend since x-axis already shows countries
   )
 
 

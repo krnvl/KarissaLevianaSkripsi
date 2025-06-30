@@ -1334,3 +1334,170 @@ for (i in 1:nrow(country_temperatures_2024)) {
 # View the prediction results for 'Strawberries' and 'Blueberries'
 print(prediction_results_mlr)
 #write.csv(prediction_results_mlr, "mlr_2024_predictions.csv", row.names = FALSE)
+
+############ RMSE MAPE MAE
+
+# Initialize packages
+library(Metrics)
+
+# Initialize results dataframe
+metrics_summary <- data.frame(
+  Food = character(),
+  Model = character(),
+  Intercept = numeric(),
+  Temp_Coefficient = numeric(),
+  Year_Coefficient = numeric(),
+  
+  # Log scale metrics
+  RMSE_Log = numeric(),
+  MAE_Log = numeric(),
+  MAPE_Log = numeric(),
+  
+  # Original scale metrics
+  RMSE_Original = numeric(),
+  MAE_Original = numeric(),
+  MAPE_Original = numeric(),
+  
+  # % error derived from log RMSE
+  RMSE_Log_Percent = numeric(),
+  
+  stringsAsFactors = FALSE
+)
+
+# Define which foods use MLR
+mlr_foods <- c("Strawberries", "Blueberries")
+lmm_foods <- setdiff(food_available_all_countries, mlr_foods)
+
+# Loop through all 25 foods
+for (food in food_available_all_countries) {
+  
+  cat("\nProcessing:", food, "\n")
+  
+  # Select coefficients
+  if (food %in% mlr_foods) {
+    model_type <- "MLR"
+    coefs <- subset(summary_ln_m2_df, Food == food)
+  } else {
+    model_type <- "LMM"
+    coefs <- subset(summary_ln_m3_df, Food == food)
+  }
+  
+  # Check if coefficients exist
+  if (nrow(coefs) == 0) {
+    warning(paste("No coefficients found for", food, "- skipping"))
+    next
+  }
+  
+  intercept <- coefs$Intercept
+  temp_coef <- coefs$Temp
+  year_coef <- coefs$Year
+  
+  # Drop rows with NA in food or predictors
+  data_no_na <- merge_data_c[
+    !is.na(merge_data_c[[food]]) &
+      !is.na(merge_data_c$Temperature) &
+      !is.na(merge_data_c$Year),
+  ]
+  
+  if (nrow(data_no_na) == 0) {
+    warning(paste("Skipping", food, "because all values are NA."))
+    next
+  }
+  
+  # Compute predicted log(y)
+  pred_ln <- intercept +
+    temp_coef * data_no_na$Temperature +
+    year_coef * data_no_na$Year
+  
+  # Actual log(y)
+  true_log <- log(data_no_na[[food]])
+  
+  # Actual y in original scale
+  true_values <- data_no_na[[food]]
+  
+  # Compute metrics in log-scale
+  rmse_log <- rmse(true_log, pred_ln)
+  mae_log <- mae(true_log, pred_ln)
+  mape_log <- mape(true_log, pred_ln) * 100
+  
+  # Back-transform predictions
+  pred_exp <- exp(pred_ln)
+  
+  # Metrics in original scale
+  rmse_orig <- rmse(true_values, pred_exp)
+  mae_orig <- mae(true_values, pred_exp)
+  mape_orig <- mape(true_values, pred_exp) * 100  # in %
+  
+  # Approximate % error from log RMSE
+  rmse_log_pct <- (exp(rmse_log) - 1) * 100
+  
+  # Store metrics
+  metrics_summary <- rbind(metrics_summary, data.frame(
+    Food = food,
+    Model = model_type,
+    
+    Intercept = intercept,
+    Temp_Coefficient = temp_coef,
+    Year_Coefficient = year_coef,
+    
+    # Log scale metrics
+    RMSE_Log = rmse_log,
+    MAE_Log = mae_log,
+    MAPE_Log = mape_log,
+    
+    # Original scale metrics
+    RMSE_Original = rmse_orig,
+    MAE_Original = mae_orig,
+    MAPE_Original = mape_orig,
+    
+    # % error derived from log RMSE
+    RMSE_Log_Percent = rmse_log_pct
+  ))
+}
+
+# View results
+print(metrics_summary)
+
+# Save to CSV
+#write.csv(metrics_summary, "model_metrics_1984_2023_log_and_original.csv", row.names = FALSE)
+
+
+######## Visualisation of Apple Actual and Predicted
+
+library(ggplot2)
+library(dplyr)
+
+food_item <- "Apples"
+coefs <- summary_ln_m3_df %>% filter(Food == food_item)
+
+intercept <- coefs$Intercept
+temp_coef <- coefs$Temp
+year_coef <- coefs$Year
+
+data_plot <- merge_data_c %>%
+  filter(!is.na(.data[[food_item]])) %>%
+  mutate(
+    Actual_Log = log(.data[[food_item]]),
+    Predicted_Log = intercept + temp_coef * Temperature + year_coef * Year
+  )
+
+data_plot <- data_plot %>%
+  mutate(
+    Country = factor(
+      Country,
+      levels = c(1, 2, 3, 4),
+      labels = c("Denmark", "Finlandia", "Swedia", "Norwegia")
+    )
+  )
+
+ggplot(data_plot, aes(x = Year)) +
+  geom_line(aes(y = Actual_Log, color = "Aktual"), size = 1) +
+  geom_line(aes(y = Predicted_Log, color = "Prediksi"), linetype = "dashed", size = 1) +
+  facet_wrap(~Country) +
+  labs(
+    title = "Nilai Aktual dan Prediksi Produksi Apel dalam Skala Log",
+    x = "Tahun",  # Change x-axis label here
+    y = "Produksi Pangan dalam Log",
+    color = "Nilai Produksi Apel"
+  ) +
+  theme_minimal()
